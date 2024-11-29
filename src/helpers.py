@@ -18,7 +18,7 @@ class FeedForward:
         self.linear1 = nn.Linear(dim, inner_dim, bias=False)
         self.linear2 = nn.Linear(inner_dim, dim, bias=False)
 
-    def forward(self, x):
+    def __call__(self, x):
         x = self.norm(x)
         x = self.linear1(x)
         x = x.gelu()
@@ -39,7 +39,7 @@ class PerceiverAttention:
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
-    def forward(self, x, latents):
+    def __call__(self, x, latents):
         """
         Args:
             x (Tensor): image features
@@ -60,8 +60,8 @@ class PerceiverAttention:
 
         # attention
         sim = Tensor.einsum("... i d, ... j d  -> ... i j", q, k)
-        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1)
+        sim = sim - Tensor.argmax(sim, axis=-1, keepdim=True).detach()
+        attn = sim.softmax(axis=-1)
 
         out = Tensor.einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h t n d -> b t n (h d)", h=h)
@@ -82,14 +82,14 @@ class PerceiverResampler:
         ff_mult=4,
     ):
         super().__init__()
-        self.latents = nn.Linear(num_latents, dim, bias=False)
+        self.latents = Tensor.zeros(num_latents, dim)
         self.frame_embs = (
-            nn.Linear(max_num_frames, dim, bias=False)
+            Tensor.zeros(max_num_frames, dim)
             if exists(max_num_frames)
             else None
         )
         self.media_time_embs = (
-            nn.Linear(max_num_media, dim, bias=False)
+            Tensor.zeros(max_num_media, dim)
             if exists(max_num_media)
             else None
         )
@@ -105,7 +105,7 @@ class PerceiverResampler:
 
         self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x):
+    def __call__(self, x):
         """
         Args:
             x (Tensor): image features
@@ -160,7 +160,7 @@ class MaskedCrossAttention:
         # whether for text to only attend to immediate preceding image, or all previous images
         self.only_attend_immediate_media = only_attend_immediate_media
 
-    def forward(self, x, media, media_locations=None, use_cached_media=False):
+    def __call__(self, x, media, media_locations=None, use_cached_media=False):
         """
         Args:
             x (Tensor): text features
@@ -176,6 +176,7 @@ class MaskedCrossAttention:
         """
 
         if not use_cached_media:
+            print(f"media_locations.shape is {media_locations.shape} but x.shape is {x.shape}")
             assert (
                 media_locations.shape[1] == x.shape[1]
             ), f"media_location.shape is {media_locations.shape} but x.shape is {x.shape}"
@@ -220,8 +221,8 @@ class MaskedCrossAttention:
             )
             sim = sim.masked_fill(~text_to_media_mask, -dtype.dtypes.finfo(sim.dtype).max)
 
-        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1)
+        sim = sim - Tensor.argmax(sim, axis=-1, keepdim=True).detach()
+        attn = sim.softmax(axis=-1)
 
         if exists(media_locations) and self.only_attend_immediate_media:
             # any text without a preceding media needs to have attention zeroed out
@@ -255,12 +256,12 @@ class GatedCrossAttentionBlock:
             heads=heads,
             only_attend_immediate_media=only_attend_immediate_media,
         )
-        self.attn_gate = nn.Linear(1, 1, bias=False)
+        self.attn_gate = Tensor.ones(1, 1)
 
         self.ff = FeedForward(dim, mult=ff_mult)
-        self.ff_gate = nn.Linear(1, 1, bias=False)
+        self.ff_gate = Tensor.ones(1, 1)
 
-    def forward(
+    def __call__(
         self,
         x,
         media,

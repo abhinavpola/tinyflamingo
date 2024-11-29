@@ -1,6 +1,6 @@
 from .helpers import GatedCrossAttentionBlock
 from .utils import getattr_recursive, setattr_recursive
-
+from tinygrad import Tensor
 
 class FlamingoLayer:
     """
@@ -35,10 +35,12 @@ class FlamingoLayer:
     def condition_use_cached_media(self, use_cached_media):
         self.use_cached_media = use_cached_media
 
-    def forward(
+    def __call__(
         self,
         lang_x,
-        attention_mask=None,
+        start_pos=None,
+        freqs_cis=None,
+        mask=None,
         **decoder_layer_kwargs,
     ):
         # Cross attention
@@ -58,9 +60,13 @@ class FlamingoLayer:
                 use_cached_media=self.use_cached_media,
             )
 
-        # Normal decoder layer
+        # Normal decoder layer - pass through all the LLaMA-specific arguments
         lang_x = self.decoder_layer(
-            lang_x, attention_mask=attention_mask, **decoder_layer_kwargs
+            lang_x, 
+            start_pos,
+            freqs_cis,
+            mask,
+            **decoder_layer_kwargs
         )
         return lang_x
 
@@ -123,7 +129,7 @@ class FlamingoLMMixin:
             ]
         )
 
-    def forward(self, input_ids, attention_mask, **kwargs):
+    def forward(self, input_ids, start_pos, **kwargs):
         """Condition the Flamingo layers on the media locations before forward()"""
         if not self.initialized_flamingo:
             raise ValueError(
@@ -140,7 +146,7 @@ class FlamingoLMMixin:
         use_cached_media_locations = (
             self._use_cached_vision_x
             and self.is_conditioned()
-            and not media_locations.any()
+            and not media_locations.any().numpy()
         )
 
         for layer in self._get_decoder_layers():
@@ -150,9 +156,7 @@ class FlamingoLMMixin:
 
         # package arguments for the other parent's forward. since we don't know the order of the arguments,
         # make them all kwargs
-        kwargs["input_ids"] = input_ids
-        kwargs["attention_mask"] = attention_mask
-        return super().forward(**kwargs)  # Call the other parent's forward method
+        return super().forward(input_ids, start_pos)  # Call the other parent's forward method
 
     def is_conditioned(self) -> bool:
         """Check whether all decoder layers are already conditioned."""

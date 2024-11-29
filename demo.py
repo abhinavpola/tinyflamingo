@@ -69,7 +69,6 @@ if __name__ == "__main__":
     vision_x = np.concatenate(vision_x, axis=0)
     vision_x = np.expand_dims(vision_x, axis=0)
 
-    print(vision_x.shape)
 
     """
     Step 3: Preprocessing text

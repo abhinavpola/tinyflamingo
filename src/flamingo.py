@@ -163,7 +163,6 @@ class Flamingo:
 
         rearrange code based on https://github.com/dhansmair/flamingo-mini
         """
-        print(vision_x.shape)
         assert vision_x.ndim == 6, "vision_x should be of shape (b, T_img, F, C, H, W)"
         b, T, F = vision_x.shape[:3]
         assert F == 1, "Only single frame supported"
@@ -172,7 +171,6 @@ class Flamingo:
         vision_x = self.vision_encoder(vision_x)[1]
         vision_x = rearrange(vision_x, "(b T F) v d -> b T F v d", b=b, T=T, F=F)
         vision_x = self.perceiver(vision_x)
-
         for layer in self.lang_encoder._get_decoder_layers():
             layer.condition_vis_x(vision_x)
 

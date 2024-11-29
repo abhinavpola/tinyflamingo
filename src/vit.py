@@ -26,8 +26,9 @@ class ViT:
     pe = self.patch_embed(x)
     x = ce.cat(pe, dim=1)
     x = x.add(self.pos_embedding).sequential(self.tbs)
-    x = x.layernorm().linear(*self.encoder_norm)
-    return x[:, 0].linear(*self.head)
+    features = x.layernorm().linear(*self.encoder_norm)
+    logits = features[:, 0].linear(*self.head)
+    return logits, features
 
   def load_from_pretrained(m):
     # https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py

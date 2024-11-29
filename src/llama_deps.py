@@ -288,13 +288,13 @@ class Transformer:
         self,
         tokens: Tensor,
         start_pos: Union[Variable, int],
-        temperature: float,
-        top_k: int,
-        top_p: float,
-        alpha_f: float,
-        alpha_p: float,
+        temperature: float = 0.0,
+        top_k: int = 0,
+        top_p: float = 0.8,
+        alpha_f: float = 0.0,
+        alpha_p: float = 0.0,
     ):
-        _bsz, seqlen = tokens.shape
+        seqlen = tokens.shape[0]
         h = self.tok_embeddings(tokens)
 
         self.freqs_cis = self.freqs_cis.cast(h.dtype).realize()
@@ -302,7 +302,7 @@ class Transformer:
             (None, (start_pos, start_pos + seqlen), None, None, None)
         )
 
-        mask = (
+        self.mask = (
             Tensor.full(
                 (1, 1, seqlen, start_pos + seqlen),
                 float("-inf"),
@@ -315,7 +315,7 @@ class Transformer:
             else None
         )
         for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
+            h = layer(h, start_pos, freqs_cis, self.mask)
         logits = self.output(self.norm(h)).float()[:, -1, :]
 
         return sample(
@@ -347,9 +347,10 @@ class Transformer:
                 alpha_f,
                 alpha_p,
             )
-        return self.forward(
-            tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p
-        )
+        return self.forward(tokens, start_pos)
+        # return self.forward(
+        #     tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p
+        # )
 
 
 # *** helpers ***
