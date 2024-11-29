@@ -1,0 +1,4 @@
+tinygrad
+einops
+transformers
+pillow

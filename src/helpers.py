@@ -3,7 +3,7 @@ Based on: https://github.com/lucidrains/flamingo-pytorch
 """
 
 from einops import rearrange, repeat
-from einops_exts import rearrange_many
+from .einops_exts import rearrange_many
 from tinygrad import Tensor, nn, dtype
 
 
@@ -82,14 +82,14 @@ class PerceiverResampler:
         ff_mult=4,
     ):
         super().__init__()
-        self.latents = nn.Linear(Tensor.randn(num_latents, dim), bias=False)
+        self.latents = nn.Linear(num_latents, dim, bias=False)
         self.frame_embs = (
-            nn.Linear(Tensor.randn(max_num_frames, dim), bias=False)
+            nn.Linear(max_num_frames, dim, bias=False)
             if exists(max_num_frames)
             else None
         )
         self.media_time_embs = (
-            nn.Linear(Tensor.randn(max_num_media, 1, dim), bias=False)
+            nn.Linear(max_num_media, dim, bias=False)
             if exists(max_num_media)
             else None
         )
@@ -255,10 +255,10 @@ class GatedCrossAttentionBlock:
             heads=heads,
             only_attend_immediate_media=only_attend_immediate_media,
         )
-        self.attn_gate = nn.Linear(Tensor([0.0]), bias=False)
+        self.attn_gate = nn.Linear(1, 1, bias=False)
 
         self.ff = FeedForward(dim, mult=ff_mult)
-        self.ff_gate = nn.Linear(Tensor([0.0]), bias=False)
+        self.ff_gate = nn.Linear(1, 1, bias=False)
 
     def forward(
         self,
