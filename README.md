@@ -2,7 +2,10 @@
 
 A tinygrad implementation of the Flamingo model. Pretty much just plugged tiny ViT and tiny llama together.
 
-`python demo.py`
+```
+pip install -r requirements.txt
+python demo.py
+```
 
 Sources:
 - https://github.com/mlfoundations/open_flamingo
