@@ -414,6 +414,7 @@ class Transformer:
 
             # Generate tokens one by one
             while cur_len < max_new_tokens + input_ids.shape[1]:
+                # Inside generate method
                 outputs = self(
                     tokens=generated,
                     start_pos=cur_len - 1,
@@ -421,12 +422,18 @@ class Transformer:
                     top_k=top_k,
                     top_p=top_p,
                 )
-                next_token = outputs.unsqueeze(1)  # Add sequence dimension
+                # Reshape to match batch dimension and add sequence dimension
+                if num_beams > 1:
+                    next_token = outputs.unsqueeze(0).repeat(
+                        (batch_size * num_beams, 1)
+                    )
+                else:
+                    next_token = outputs.reshape(batch_size, 1)
                 generated = generated.cat(next_token, dim=1)
 
                 # Check if sequences are finished
                 not_finished = not_finished & (next_token.squeeze(-1) != eos_token_id)
-                if not not_finished.any():
+                if not not_finished.any().numpy():
                     break
 
                 cur_len += 1

@@ -12,7 +12,7 @@ def create_model_and_transforms(
     text_tokenizer,
     cross_attn_every_n_layers: int = 1,
     decoder_layers_attr_name: str = None,
-    freeze_lm_embeddings: bool = False,
+    freeze_lm_embeddings: bool = True,
     **flamingo_kwargs,
 ):
     """
