@@ -42,7 +42,7 @@ class ViT:
         x = x.layernorm().linear(*self.encoder_norm)
 
         if self.output_tokens:
-            return x
+            return x[:, 0], x[:, 1:]  # Split into CLS token and patch tokens
         else:
             return x[:, 0].linear(*self.head)
 

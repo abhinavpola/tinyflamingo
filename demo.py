@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     """
     Step 2: Preprocessing images
-    Details: For OpenFlamingo, we expect the image to be a torch tensor of shape
+    Details: For OpenFlamingo, we expect the image to be a tensor of shape
     batch_size x num_media x num_frames x channels x height x width.
     (B, T_img, F, C, H, W)
     In this case batch_size = 1, num_media = 3, num_frames = 1,
@@ -158,12 +158,15 @@ if __name__ == "__main__":
         allow_special=True,
     )
 
+    # Add batch dimension
+    lang_x = rearrange(Tensor(lang_x), "t -> 1 t")
+
     """
     Step 4: Generate text
     """
     generated_text = model.generate(
         vision_x=vision_x,
-        lang_x=Tensor(lang_x),
+        lang_x=lang_x,
         max_new_tokens=20,
         num_beams=3,
     )

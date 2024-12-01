@@ -374,6 +374,71 @@ class Transformer:
         self.tok_embeddings = new_embeddings
         self.output = nn.Linear(self.output.weight.shape[1], new_num_tokens, bias=False)
 
+    def generate(
+        self,
+        input_ids: Tensor,
+        eos_token_id: int,
+        num_beams: int = 1,
+        max_new_tokens: int = 20,
+        temperature: float = 0.7,
+        top_k: int = 0,
+        top_p: float = 0.9,
+        **kwargs,
+    ) -> Tensor:
+        """
+        Generate text using beam search decoding.
+
+        Args:
+            input_ids: Input token ids tensor of shape (batch_size, seq_len)
+            eos_token_id: End of sequence token id
+            num_beams: Number of beams for beam search
+            max_new_tokens: Maximum number of tokens to generate
+            temperature: Sampling temperature
+            top_k: Top-k sampling parameter
+            top_p: Top-p sampling parameter
+
+        Returns:
+            Generated token ids tensor
+        """
+        with Tensor.test():
+            batch_size = input_ids.shape[0]
+
+            # Handle beam search
+            if num_beams > 1:
+                input_ids = input_ids.repeat_interleave(num_beams, dim=0)
+
+            # Initialize generation variables
+            cur_len = input_ids.shape[1]
+            generated = input_ids
+            not_finished = Tensor.ones(batch_size * num_beams, dtype=dtypes.bool)
+
+            # Generate tokens one by one
+            while cur_len < max_new_tokens + input_ids.shape[1]:
+                outputs = self(
+                    tokens=generated,
+                    start_pos=cur_len - 1,
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                )
+                next_token = outputs.unsqueeze(1)  # Add sequence dimension
+                generated = generated.cat(next_token, dim=1)
+
+                # Check if sequences are finished
+                not_finished = not_finished & (next_token.squeeze(-1) != eos_token_id)
+                if not not_finished.any():
+                    break
+
+                cur_len += 1
+
+            # If we're doing beam search, reshape output
+            if num_beams > 1:
+                generated = generated.reshape(batch_size, num_beams, -1)
+                # Take first beam for each batch
+                generated = generated[:, 0, :]
+
+            return generated
+
 
 # *** helpers ***
 

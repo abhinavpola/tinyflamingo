@@ -1,6 +1,7 @@
+from typing import Union
 from .helpers import GatedCrossAttentionBlock
 from .utils import getattr_recursive, setattr_recursive
-from tinygrad import Tensor
+from tinygrad import Tensor, Variable
 
 class FlamingoLayer:
     """
@@ -129,14 +130,23 @@ class FlamingoLMMixin:
             ]
         )
 
-    def forward(self, input_ids, start_pos, **kwargs):
+    def forward(
+        self,
+        tokens: Tensor,  # Changed from input_ids to match Llama signature
+        start_pos: Union[Variable, int],
+        temperature: float = 0.0,
+        top_k: int = 0,
+        top_p: float = 0.8,
+        alpha_f: float = 0.0,
+        alpha_p: float = 0.0,
+    ):
         """Condition the Flamingo layers on the media locations before forward()"""
         if not self.initialized_flamingo:
             raise ValueError(
                 "Flamingo layers are not initialized. Please call `init_flamingo` first."
             )
 
-        media_locations = input_ids == self.media_token_id
+        media_locations = tokens == self.media_token_id
 
         # if there are media already cached and we're generating and there are no media tokens in the input,
         # we'll assume that ALL input tokens should attend to the last previous media that is cached.
@@ -156,7 +166,15 @@ class FlamingoLMMixin:
 
         # package arguments for the other parent's forward. since we don't know the order of the arguments,
         # make them all kwargs
-        return super().forward(input_ids, start_pos)  # Call the other parent's forward method
+        return super().forward(
+            tokens,
+            start_pos,
+            temperature,
+            top_k,
+            top_p,
+            alpha_f,
+            alpha_p,
+        )  # Call the other parent's forward method
 
     def is_conditioned(self) -> bool:
         """Check whether all decoder layers are already conditioned."""

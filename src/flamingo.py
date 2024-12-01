@@ -1,17 +1,16 @@
-from einops import rearrange
-
-from .helpers import PerceiverResampler
 from tinygrad import Tensor
-from tinygrad.nn.state import get_parameters
+from einops import rearrange
+from .helpers import PerceiverResampler
+
 from .vit import ViT
-from .llama3 import Transformer
+from .llama3 import Transformer as Llama3
 
 
 class Flamingo:
     def __init__(
         self,
         vision_encoder: ViT,
-        lang_encoder: Transformer,
+        lang_encoder: Llama3,
         eoc_token_id: int,
         media_token_id: int,
         cross_attn_every_n_layers: int = 1,
@@ -20,20 +19,18 @@ class Flamingo:
     ):
         """
         Args:
-            vision_encoder: Tinygrad ViT
-            lang_encoder: Tinygrad LLaMa
+            vision_encoder (nn.Module): HF CLIPModel
+            lang_encoder (nn.Module): HF causal language model
             eoc_token_id (int): Token id for <|endofchunk|>
             media_token_id (int): Token id for <image>
             vis_dim (int): Dimension of the visual features.
                 Visual features are projected to match this shape along the last dimension.
             cross_attn_every_n_layers (int, optional): How often to apply cross attention after transformer layer. Defaults to 1.
         """
-        super().__init__()
         self.eoc_token_id = eoc_token_id
         self.media_token_id = media_token_id
-        self.vis_dim = vision_encoder.embed_dim
         self.lang_dim = lang_encoder.dim
-
+        self.vis_dim = vision_encoder.embed_dim
         self.vision_encoder = vision_encoder
         self.perceiver = PerceiverResampler(dim=self.vis_dim)
         self.lang_encoder = lang_encoder
@@ -56,11 +53,13 @@ class Flamingo:
         self,
         vision_x: Tensor,
         lang_x: Tensor,
-        attention_mask: Tensor = None,
-        labels: Tensor = None,
         clear_conditioned_layers: bool = True,
         past_key_values=None,
-        use_cache: bool = False,
+        temperature: float = 0.0,
+        top_k: int = 0,
+        top_p: float = 0.8,
+        alpha_f: float = 0.0,
+        alpha_p: float = 0.0,
     ):
         """
         Forward pass of Flamingo.
@@ -70,32 +69,35 @@ class Flamingo:
                 shape (B, T_img, F, C, H, W) with F=1
             lang_x (Tensor): Language input ids
                 shape (B, T_txt)
-            attention_mask (Tensor, optional): Attention mask. Defaults to None.
             labels (Tensor, optional): Labels. Defaults to None.
             clear_conditioned_layers: if True, clear the conditioned layers
-                once the foward pass is completed. Set this to false if the
-                same set of images will be reused in another subsequent
-                forward pass.
-            past_key_values: pre-computed values to pass to language model.
-                See past_key_values documentation in Hugging Face
-                CausalLM models.
-            use_cache: whether to use cached key values. See use_cache
-                documentation in Hugging Face CausalLM models.
+                once the forward pass is completed.
+            temperature (float, optional): Sampling temperature. Defaults to 0.0.
+            top_k (int, optional): Top-k sampling. Defaults to 0.
+            top_p (float, optional): Top-p sampling. Defaults to 0.8.
+            alpha_f (float, optional): Alpha frequency. Defaults to 0.0.
+            alpha_p (float, optional): Alpha presence. Defaults to 0.0.
         """
-
         assert (
             self.lang_encoder.initialized_flamingo
         ), "Flamingo layers are not initialized. Please call `init_flamingo` first."
+        assert vision_x is not None, "Must provide vision_x."
 
         self._encode_vision_x(vision_x=vision_x)
         self._condition_media_locations(input_ids=lang_x)
 
+        # Get the start position for the language model
+        start_pos = 0 if past_key_values is None else past_key_values[0][0].shape[1]
+
+        # Call the Llama3 transformer with its expected interface
         output = self.lang_encoder(
-            input_ids=lang_x,
-            attention_mask=attention_mask,
-            labels=labels,
-            past_key_values=past_key_values,
-            use_cache=use_cache,
+            tokens=lang_x,
+            start_pos=start_pos,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            alpha_f=alpha_f,
+            alpha_p=alpha_p,
         )
 
         if clear_conditioned_layers:
@@ -107,7 +109,6 @@ class Flamingo:
         self,
         vision_x: Tensor,
         lang_x: Tensor,
-        attention_mask: Tensor = None,
         **kwargs,
     ):
         """
@@ -136,26 +137,25 @@ class Flamingo:
         Returns:
             Tensor: lang_x with generated tokens appended to it
         """
-        num_beams = kwargs.pop("num_beams", 1)
-        if num_beams > 1:
-            vision_x = vision_x.repeat_interleave(num_beams, dim=0)
+        with Tensor.test():
+            num_beams = kwargs.pop("num_beams", 1)
+            if num_beams > 1:
+                vision_x = vision_x.repeat_interleave(num_beams, dim=0)
 
-        self.lang_encoder._use_cached_vision_x = True
-        self._encode_vision_x(vision_x=vision_x)
+            self._encode_vision_x(vision_x=vision_x)
 
-        eos_token_id = kwargs.pop("eos_token_id", self.eoc_token_id)
-        output = self.lang_encoder(lang_x, 0)
-        # output = self.lang_encoder.generate(
-        #     input_ids=lang_x,
-        #     attention_mask=attention_mask,
-        #     eos_token_id=eos_token_id,
-        #     num_beams=num_beams,
-        #     **kwargs,
-        # )
+            eos_token_id = kwargs.pop("eos_token_id", self.eoc_token_id)
 
-        self.lang_encoder.clear_conditioned_layers()
-        self.lang_encoder._use_cached_vision_x = False
-        return output
+            assert lang_x.ndim == 2, "lang_x should be of shape (b, t)"
+            output = self.lang_encoder.generate(
+                input_ids=lang_x,
+                eos_token_id=eos_token_id,
+                num_beams=num_beams,
+                **kwargs,
+            )
+
+            self.lang_encoder.clear_conditioned_layers()
+            return output
 
     def _encode_vision_x(self, vision_x: Tensor):
         """
@@ -168,25 +168,16 @@ class Flamingo:
 
         rearrange code based on https://github.com/dhansmair/flamingo-mini
         """
+
         assert vision_x.ndim == 6, "vision_x should be of shape (b, T_img, F, C, H, W)"
         b, T, F = vision_x.shape[:3]
         assert F == 1, "Only single frame supported"
 
         vision_x = rearrange(vision_x, "b T F c h w -> (b T F) c h w")
-        vision_x = self.vision_encoder(vision_x)[1]
+        with Tensor.test():
+            vision_x = self.vision_encoder(vision_x)[1]
         vision_x = rearrange(vision_x, "(b T F) v d -> b T F v d", b=b, T=T, F=F)
         vision_x = self.perceiver(vision_x)
+
         for layer in self.lang_encoder._get_decoder_layers():
             layer.condition_vis_x(vision_x)
-
-    def _condition_media_locations(self, input_ids: Tensor):
-        """
-        Compute the media token locations from lang_x and condition the language model on these.
-        Args:
-            input_ids (Tensor): Language input
-                shape (B, T_txt)
-        """
-        media_locations = input_ids == self.media_token_id
-
-        for layer in self.lang_encoder._get_decoder_layers():
-            layer.condition_media_locations(media_locations)

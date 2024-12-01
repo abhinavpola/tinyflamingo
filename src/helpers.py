@@ -215,7 +215,7 @@ class MaskedCrossAttention:
                 )
             else:
                 # at each boolean of True, increment the time counter (relative to media time)
-                text_time = media_locations.cumsum(dim=-1)
+                text_time = media_locations.cumsum(axis=-1)
 
             # text time must equal media time if only attending to most immediate image
             # otherwise, as long as text time is greater than media time (if attending to all previous images / media)
@@ -225,7 +225,7 @@ class MaskedCrossAttention:
                 rearrange(text_time, "b i -> b 1 i 1"),
                 repeat(media_time, "j -> 1 1 1 (j n)", n=n),
             )
-            sim = sim.masked_fill(~text_to_media_mask, -dtype.dtypes.finfo(sim.dtype).max)
+            sim = sim.masked_fill(~text_to_media_mask, -max(dtype.dtypes.finfo(sim.dtype)))
 
         sim = sim - Tensor.argmax(sim, axis=-1, keepdim=True).detach()
         attn = sim.softmax(axis=-1)
