@@ -30,11 +30,9 @@ class ViT:
         x = x.reshape(shape=(x.shape[0], x.shape[1], -1)).permute(order=(0, 2, 1))
         return x
 
-    def __call__(self, x):
-        if not self.requires_grad:
-            with Tensor.no_grad():
-                return self._forward(x)
-        return self._forward(x)
+    def __call__(self, *args, **kwargs):
+        with Tensor.train(self.requires_grad):
+            return self._forward(*args, **kwargs)
 
     def _forward(self, x):
         ce = self.cls.add(Tensor.zeros(x.shape[0], 1, 1))

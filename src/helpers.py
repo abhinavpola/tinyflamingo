@@ -107,12 +107,9 @@ class PerceiverResampler:
         self.norm = nn.LayerNorm(dim)
         self.requires_grad = requires_grad
 
-    def __call__(self, x):
-        if self.requires_grad:
-            return self._forward(x)
-        else:
-            with Tensor.no_grad():
-                return self._forward(x)
+    def __call__(self, *args, **kwargs):
+        with Tensor.train(self.requires_grad):
+            return self._forward(*args, **kwargs)
 
     def _forward(self, x):
         """
@@ -272,12 +269,9 @@ class GatedCrossAttentionBlock:
         self.ff_gate = Tensor.ones(1, 1)
         self.requires_grad = requires_grad
 
-    def __call__(self, x):
-        if self.requires_grad:
-            return self._forward(x)
-        else:
-            with Tensor.no_grad():
-                return self._forward(x)
+    def __call__(self, *args, **kwargs):
+        with Tensor.train(self.requires_grad):
+            return self._forward(*args, **kwargs)
 
     def _forward(
         self,

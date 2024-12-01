@@ -1,4 +1,4 @@
-import ast
+from einops import rearrange
 from pathlib import Path
 from src import factory
 from src import vit
@@ -23,7 +23,7 @@ def process_image(img: Image) -> Tensor:
     y0, x0 = (np.asarray(img.shape)[:2] - 224) // 2
     img = img[y0 : y0 + 224, x0 : x0 + 224]
     img = np.moveaxis(img, [2, 0, 1], [0, 1, 2])
-    img = img.astype(np.float32)[:3].reshape(1, 3, 224, 224)
+    img = img.astype(np.float32)[:3].reshape(3, 224, 224)
     img /= 255.0
     img -= 0.5
     img /= 0.5
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     )
 
     llama3_model = llama3.build_transformer(
-        model_path, model_size="1B", quantize=None, device=Device.DEFAULT
+        model_path, model_size="1B", quantize="int8", device=Device.DEFAULT
     )
 
     # prompt = "The capital of France is "
@@ -128,17 +128,21 @@ if __name__ == "__main__":
     Step 2: Preprocessing images
     Details: For OpenFlamingo, we expect the image to be a torch tensor of shape
     batch_size x num_media x num_frames x channels x height x width.
+    (B, T_img, F, C, H, W)
     In this case batch_size = 1, num_media = 3, num_frames = 1,
     channels = 3, height = 224, width = 224.
     """
-    vision_x = [
-        np.expand_dims(process_image(demo_image_one), axis=0),
-        np.expand_dims(process_image(demo_image_two), axis=0),
-        np.expand_dims(process_image(query_image), axis=0),
-    ]
+    vision_x = Tensor.stack(
+        process_image(demo_image_one),
+        process_image(demo_image_two),
+        process_image(query_image),
+        dim=0,
+    )
 
-    vision_x = np.concatenate(vision_x, axis=0)
-    vision_x = np.expand_dims(vision_x, axis=0)
+
+    vision_x = rearrange(
+        vision_x, "n c h w -> 1 n 1 c h w"
+    )  # Reshape using einops pattern
 
     """
     Step 3: Preprocessing text
@@ -158,7 +162,7 @@ if __name__ == "__main__":
     Step 4: Generate text
     """
     generated_text = model.generate(
-        vision_x=Tensor(vision_x),
+        vision_x=vision_x,
         lang_x=Tensor(lang_x),
         max_new_tokens=20,
         num_beams=3,

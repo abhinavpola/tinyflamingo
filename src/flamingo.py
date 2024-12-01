@@ -49,10 +49,8 @@ class Flamingo:
         self.requires_grad = requires_grad
 
     def __call__(self, *args, **kwargs):
-        if not self.requires_grad:
-            with Tensor.no_grad():
-                return self._forward(*args, **kwargs)
-        return self._forward(*args, **kwargs)
+        with Tensor.train(self.requires_grad):
+            return self._forward(*args, **kwargs)
 
     def _forward(
         self,

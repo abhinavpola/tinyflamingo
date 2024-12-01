@@ -48,7 +48,9 @@ def create_model_and_transforms(
     if decoder_layers_attr_name is None:
         decoder_layers_attr_name = _infer_decoder_layers_attr_name(lang_encoder)
     lang_encoder.set_decoder_layers_attr_name(decoder_layers_attr_name)
-    lang_encoder.resize_token_embeddings(len(text_tokenizer))
+
+    total_vocab_size = text_tokenizer.num_base_tokens + len(text_tokenizer.special_tokens)
+    lang_encoder.resize_token_embeddings(total_vocab_size)
 
     model = Flamingo(
         vision_encoder,
@@ -61,7 +63,7 @@ def create_model_and_transforms(
 
     # Freeze all parameters
     model.requires_grad = False
-    assert sum(p.numel() for p in model.parameters() if p.requires_grad) == 0
+    assert sum(p.numel() for p in get_parameters(model) if p.requires_grad) == 0
 
     # Unfreeze perceiver, gated_cross_attn_layers, and LM input embeddings
     model.perceiver.requires_grad = True
