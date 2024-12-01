@@ -64,7 +64,8 @@ class Tokenizer:
             self.special_tokens["<|eot_id|>"],
         }
 
-    def decode(self, toks):
+    def decode(self, toks: Tensor) -> str:
+        toks = toks.numpy()
         return self.model.decode([t for t in toks if t < self.num_base_tokens])
 
     def encode(self, text, allow_special=False):

@@ -171,4 +171,6 @@ if __name__ == "__main__":
         num_beams=3,
     )
 
+    print(generated_text.shape)
+
     print("Generated text: ", tokenizer.decode(generated_text[0]))
