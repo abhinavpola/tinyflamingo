@@ -1,4 +1,5 @@
 tinygrad
 einops
-transformers
+numpy
 pillow
+tiktoken
