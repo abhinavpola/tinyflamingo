@@ -80,6 +80,7 @@ class PerceiverResampler:
         max_num_media=None,
         max_num_frames=None,
         ff_mult=4,
+        requires_grad=False,
     ):
         super().__init__()
         self.latents = Tensor.zeros(num_latents, dim)
@@ -104,8 +105,16 @@ class PerceiverResampler:
             )
 
         self.norm = nn.LayerNorm(dim)
+        self.requires_grad = requires_grad
 
     def __call__(self, x):
+        if self.requires_grad:
+            return self._forward(x)
+        else:
+            with Tensor.no_grad():
+                return self._forward(x)
+
+    def _forward(self, x):
         """
         Args:
             x (Tensor): image features
@@ -247,6 +256,7 @@ class GatedCrossAttentionBlock:
         heads=8,
         ff_mult=4,
         only_attend_immediate_media=True,
+        requires_grad=False,
     ):
         super().__init__()
         self.attn = MaskedCrossAttention(
@@ -260,8 +270,16 @@ class GatedCrossAttentionBlock:
 
         self.ff = FeedForward(dim, mult=ff_mult)
         self.ff_gate = Tensor.ones(1, 1)
+        self.requires_grad = requires_grad
 
-    def __call__(
+    def __call__(self, x):
+        if self.requires_grad:
+            return self._forward(x)
+        else:
+            with Tensor.no_grad():
+                return self._forward(x)
+
+    def _forward(
         self,
         x,
         media,

@@ -6,6 +6,7 @@ from tinygrad.nn.state import get_parameters
 from .vit import ViT
 from .llama3 import Transformer
 
+
 class Flamingo:
     def __init__(
         self,
@@ -13,9 +14,9 @@ class Flamingo:
         lang_encoder: Transformer,
         eoc_token_id: int,
         media_token_id: int,
-        vis_dim: int,
         cross_attn_every_n_layers: int = 1,
         gradient_checkpointing: bool = False,
+        requires_grad: bool = False,
     ):
         """
         Args:
@@ -30,8 +31,8 @@ class Flamingo:
         super().__init__()
         self.eoc_token_id = eoc_token_id
         self.media_token_id = media_token_id
-        self.vis_dim = vis_dim
-        self.lang_dim = lang_encoder.output.weight.shape[0]
+        self.vis_dim = vision_encoder.embed_dim
+        self.lang_dim = lang_encoder.dim
 
         self.vision_encoder = vision_encoder
         self.perceiver = PerceiverResampler(dim=self.vis_dim)
@@ -45,9 +46,15 @@ class Flamingo:
         )
         self._use_gradient_checkpointing = gradient_checkpointing
         self.perceiver._use_gradient_checkpointing = gradient_checkpointing
+        self.requires_grad = requires_grad
 
+    def __call__(self, *args, **kwargs):
+        if not self.requires_grad:
+            with Tensor.no_grad():
+                return self._forward(*args, **kwargs)
+        return self._forward(*args, **kwargs)
 
-    def forward(
+    def _forward(
         self,
         vision_x: Tensor,
         lang_x: Tensor,

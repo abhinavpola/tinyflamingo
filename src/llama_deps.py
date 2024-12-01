@@ -200,10 +200,10 @@ def sample(logits: Tensor, temp: float, k: int, p: float, af: float, ap: float):
         logits = logits - (sample.alpha_counter * af + (sample.alpha_counter > 0) * ap)
 
     # replace NaNs with -inf
-    logits = (logits != logits).where(-float("inf"), logits)
+    logits = logits.maximum(-float("inf")) / temp
 
     # softmax
-    t = (logits / temp).softmax()
+    t = logits.softmax()
 
     counter, counter2 = (
         Tensor.arange(t.numel(), device=logits.device).contiguous(),
@@ -275,6 +275,7 @@ class Transformer:
             )
             for _ in range(n_layers)
         ]
+        self.dim = dim
         self.norm = nn.RMSNorm(dim, norm_eps)
         self.tok_embeddings = nn.Embedding(vocab_size, dim)
         self.output = nn.Linear(dim, vocab_size, bias=False)
@@ -288,13 +289,13 @@ class Transformer:
         self,
         tokens: Tensor,
         start_pos: Union[Variable, int],
-        temperature: float = 0.0,
-        top_k: int = 0,
-        top_p: float = 0.8,
-        alpha_f: float = 0.0,
-        alpha_p: float = 0.0,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+        alpha_f: float,
+        alpha_p: float,
     ):
-        seqlen = tokens.shape[0]
+        _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
 
         self.freqs_cis = self.freqs_cis.cast(h.dtype).realize()
@@ -302,7 +303,7 @@ class Transformer:
             (None, (start_pos, start_pos + seqlen), None, None, None)
         )
 
-        self.mask = (
+        mask = (
             Tensor.full(
                 (1, 1, seqlen, start_pos + seqlen),
                 float("-inf"),
@@ -315,8 +316,10 @@ class Transformer:
             else None
         )
         for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, self.mask)
+            h = layer(h, start_pos, freqs_cis, mask)
         logits = self.output(self.norm(h)).float()[:, -1, :]
+
+        # return logits.flatten().softmax().multinomial()
 
         return sample(
             logits.flatten(), temperature, top_k, top_p, alpha_f, alpha_p
@@ -347,10 +350,29 @@ class Transformer:
                 alpha_f,
                 alpha_p,
             )
-        return self.forward(tokens, start_pos)
-        # return self.forward(
-        #     tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p
-        # )
+        return self.forward(
+            tokens, start_pos, temperature, top_k, top_p, alpha_f, alpha_p
+        )
+
+    def resize_token_embeddings(self, new_num_tokens):
+        """Resizes token embeddings to new size"""
+        old_embeddings = self.tok_embeddings
+        old_num_tokens = old_embeddings.weight.shape[0]
+
+        if new_num_tokens == old_num_tokens:
+            return
+
+        # Create new embeddings
+        new_embeddings = nn.Embedding(new_num_tokens, old_embeddings.weight.shape[1])
+
+        # Copy the original embeddings
+        num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
+        new_embeddings.weight[:num_tokens_to_copy] = old_embeddings.weight[
+            :num_tokens_to_copy
+        ]
+
+        self.tok_embeddings = new_embeddings
+        self.output = nn.Linear(self.output.weight.shape[1], new_num_tokens, bias=False)
 
 
 # *** helpers ***
