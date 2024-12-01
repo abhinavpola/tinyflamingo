@@ -182,7 +182,6 @@ class MaskedCrossAttention:
         """
 
         if not use_cached_media:
-            print(f"media_locations.shape is {media_locations.shape} but x.shape is {x.shape}")
             assert (
                 media_locations.shape[1] == x.shape[1]
             ), f"media_location.shape is {media_locations.shape} but x.shape is {x.shape}"
